@@ -1,0 +1,23 @@
+repository = "gcr.io/stardust-156404"
+
+[[rule]]
+image_patterns = [ "deno-module-visualizer" ]
+keep_count = 5
+allow_tagged = true
+tag_filter = "v[0-9]+(beta|alpha).+"
+
+[[rule]]
+image_patterns = [ "multi-starnotify" ]
+keep_count = 5
+allow_tagged = true
+
+[[rule]]
+image_patterns = [ "nagios" ]
+keep_count = 5
+allow_tagged = true
+
+[[rule]]
+image_patterns = [ ".+" ]
+keep_count = 5
+allow_tagged = true
+tag_filter = "([0-9a-f]{7}|h[0-9]+)"

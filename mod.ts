@@ -1,12 +1,14 @@
-#!/usr/bin/env -S deno run --allow-run --allow-net --allow-read
-import { createClient } from "https://deno.land/x/docker_registry_client@v0.1.0/registry-client-v2.ts";
+#!/usr/bin/env -S deno run --allow-net --allow-read --allow-env
+import { createClient } from "https://deno.land/x/docker_registry_client@v0.1.1/registry-client-v2.ts";
+import { fetchServiceAccountToken } from "https://cloudydeno.github.io/deno-bitesized/integrations/google-metadata-service@v1beta1.ts";
+import { pooledMap } from "https://deno.land/std@0.92.0/async/pool.ts";
 import * as TOML from "https://deno.land/std@0.92.0/encoding/toml.ts";
 
 const GIGABYTE = 1024 * 1024 * 1024;
 const DAY = 24 * 60 * 60 * 1000;
 
 // load up configuration
-const cfgPath = Deno.args[0] ?? new URL('gcr-cleanup.toml', import.meta.url);
+const cfgPath = Deno.args[0] ?? 'gcr-cleanup.toml';
 const config = TOML.parse(await Deno.readTextFile(cfgPath)) as Config;
 const rules = config.rule.map(r => ({ ...r,
   imageRegExps: r.image_patterns?.map(x => new RegExp(`^${x}$`)),
@@ -14,10 +16,15 @@ const rules = config.rule.map(r => ({ ...r,
 }));
 
 // configure auth
-const password = Deno.env.get('GCLOUD_TOKEN');
+const password = Deno.env.get('GCLOUD_TOKEN') ?? await fetchServiceAccountToken().then(x => x.access_token).catch(err => {
+  if (err.message.split(': ').includes('failed to lookup address information')) return null;
+  return Promise.reject(err);
+});
+if (!password) throw new Error(`No gcloud token found, checked $GCLOUD_TOKEN and Google Compute metadata server`);
+
 const getClient = async (name: string) => createClient({ name,
   username: 'oauth2accesstoken', password,
-  scopes: Deno.args.includes('--yes') ? ['push', 'pull'] : ['pull'],
+  scopes: (Deno.args.includes('--yes') && name.split('/').length === 3) ? ['push', 'pull'] : ['pull'],
 });
 
 // build a data structure of all repositories
@@ -31,7 +38,7 @@ for (const repo of repos) {
   try {
     // download tag info (gcr doesn't do pagination)
     const client = await getClient(`${config.repository}/${repo.imageName}`);
-    const { tags, manifest } = await client.listTags();
+    const { manifest } = await client.listTags();
 
     // process the data just a bit
     const manifests = Object.entries(manifest ?? {})
@@ -73,6 +80,18 @@ for (const repo of repos) {
     repo.tagsDeleted = toDel.reduce((sum, x) => sum + x.tag.length, 0);
     repo.gbDeleted = Math.round(bytesDeleted / GIGABYTE);
     repo.oldestAfter = manifests.find(x => !toDel.includes(x))?.uploadedAt;
+
+    if (!Deno.args.includes('--yes')) continue;
+    const map = pooledMap(5, toDel, async image => {
+      for (const tag of image.tag) {
+        await client.deleteManifest({ref: tag});
+      }
+      await client.deleteManifest({ref: image.digest});
+      return image;
+    });
+    for await (const img of map) {
+      console.log('Deleted', repo.imageName, img.digest, img.tag, 'from', img.uploadedAt, '-', img.imageBytes, 'bytes');
+    }
 
   } catch (err) {
     console.error('Image', repo, 'failed:', err.message);
