@@ -1,8 +1,8 @@
 #!/usr/bin/env -S deno run --allow-net --allow-read --allow-env
-import { createClient } from "https://deno.land/x/docker_registry_client@v0.1.1/registry-client-v2.ts";
-import { fetchServiceAccountToken } from "https://cloudydeno.github.io/deno-bitesized/integrations/google-metadata-service@v1beta1.ts";
-import { pooledMap } from "https://deno.land/std@0.92.0/async/pool.ts";
-import * as TOML from "https://deno.land/std@0.92.0/encoding/toml.ts";
+import { createClient } from "https://deno.land/x/docker_registry_client@v0.1.2/registry-client-v2.ts";
+import { fetchServiceAccountToken } from "https://crux.land/2EPu5b#google-metadata-service@v1beta1";
+import { pooledMap } from "https://deno.land/std@0.95.0/async/pool.ts";
+import * as TOML from "https://deno.land/std@0.95.0/encoding/toml.ts";
 
 const GIGABYTE = 1024 * 1024 * 1024;
 const DAY = 24 * 60 * 60 * 1000;
